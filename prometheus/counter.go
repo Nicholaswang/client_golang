@@ -19,6 +19,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/golang/protobuf/proto"
+
 	dto "github.com/prometheus/client_model/go"
 )
 
@@ -78,7 +80,7 @@ func NewCounter(opts CounterOpts) Counter {
 		nil,
 		opts.ConstLabels,
 	)
-	result := &counter{desc: desc, labelPairs: desc.constLabelPairs, now: time.Now}
+	result := &counter{desc: desc, labelPairs: desc.constLabelPairs, now: time.Now, t: opts.T}
 	result.init(result) // Init self-collection.
 	return result
 }
@@ -98,6 +100,7 @@ type counter struct {
 	exemplar   atomic.Value // Containing nil or a *dto.Exemplar.
 
 	now func() time.Time // To mock out time.Now() for testing.
+	t   time.Time
 }
 
 func (c *counter) Desc() *Desc {
@@ -134,6 +137,9 @@ func (c *counter) Inc() {
 }
 
 func (c *counter) Write(out *dto.Metric) error {
+	if c.t.IsZero() == false {
+		out.TimestampMs = proto.Int64(c.t.Unix()*1000 + int64(c.t.Nanosecond()/1000000))
+	}
 	fval := math.Float64frombits(atomic.LoadUint64(&c.valBits))
 	ival := atomic.LoadUint64(&c.valInt)
 	val := fval + float64(ival)
@@ -180,7 +186,7 @@ func NewCounterVec(opts CounterOpts, labelNames []string) *CounterVec {
 			if len(lvs) != len(desc.variableLabels) {
 				panic(makeInconsistentCardinalityError(desc.fqName, desc.variableLabels, lvs))
 			}
-			result := &counter{desc: desc, labelPairs: makeLabelPairs(desc, lvs), now: time.Now}
+			result := &counter{desc: desc, labelPairs: makeLabelPairs(desc, lvs), now: time.Now, t: opts.T}
 			result.init(result) // Init self-collection.
 			return result
 		}),

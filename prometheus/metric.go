@@ -80,6 +80,9 @@ type Opts struct {
 	// string.
 	Help string
 
+	// time specified from user in the record
+	T time.Time
+
 	// ConstLabels are used to attach fixed labels to this metric. Metrics
 	// with the same fully-qualified name must have the same label names in
 	// their ConstLabels.

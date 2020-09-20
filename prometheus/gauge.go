@@ -15,6 +15,7 @@ package prometheus
 
 import (
 	"math"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -50,6 +51,8 @@ type Gauge interface {
 
 	// SetToCurrentTime sets the Gauge to the current Unix time in seconds.
 	SetToCurrentTime()
+
+	UpdateUserTime(t time.Time)
 }
 
 // GaugeOpts is an alias for Opts. See there for doc comments.
@@ -85,6 +88,8 @@ type gauge struct {
 
 	desc       *Desc
 	labelPairs []*dto.LabelPair
+	writeMtx   sync.Mutex // mutex to update user time
+	t          time.Time  //user defined time
 }
 
 func (g *gauge) Desc() *Desc {
@@ -124,6 +129,12 @@ func (g *gauge) Sub(val float64) {
 func (g *gauge) Write(out *dto.Metric) error {
 	val := math.Float64frombits(atomic.LoadUint64(&g.valBits))
 	return populateMetric(GaugeValue, val, g.labelPairs, nil, out)
+}
+
+func (g *gauge) UpdateUserTime(t time.Time) {
+	g.writeMtx.Lock()
+	defer g.writeMtx.Unlock()
+	g.t = t
 }
 
 // GaugeVec is a Collector that bundles a set of Gauges that all share the same

@@ -16,6 +16,7 @@ package prometheus
 import (
 	"errors"
 	"math"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -43,6 +44,8 @@ type Counter interface {
 	// Add adds the given value to the counter. It panics if the value is <
 	// 0.
 	Add(float64)
+
+	UpdateUserTime(t time.Time)
 }
 
 // ExemplarAdder is implemented by Counters that offer the option of adding a
@@ -80,7 +83,7 @@ func NewCounter(opts CounterOpts) Counter {
 		nil,
 		opts.ConstLabels,
 	)
-	result := &counter{desc: desc, labelPairs: desc.constLabelPairs, now: time.Now, t: opts.T}
+	result := &counter{desc: desc, labelPairs: desc.constLabelPairs, now: time.Now}
 	result.init(result) // Init self-collection.
 	return result
 }
@@ -99,8 +102,9 @@ type counter struct {
 	labelPairs []*dto.LabelPair
 	exemplar   atomic.Value // Containing nil or a *dto.Exemplar.
 
-	now func() time.Time // To mock out time.Now() for testing.
-	t   time.Time
+	now      func() time.Time // To mock out time.Now() for testing.
+	writeMtx sync.Mutex       // mutex to update user time
+	t        time.Time        //user defined time
 }
 
 func (c *counter) Desc() *Desc {
@@ -134,6 +138,12 @@ func (c *counter) AddWithExemplar(v float64, e Labels) {
 
 func (c *counter) Inc() {
 	atomic.AddUint64(&c.valInt, 1)
+}
+
+func (c *counter) UpdateUserTime(t time.Time) {
+	c.writeMtx.Lock()
+	defer c.writeMtx.Unlock()
+	c.t = t
 }
 
 func (c *counter) Write(out *dto.Metric) error {
@@ -186,7 +196,7 @@ func NewCounterVec(opts CounterOpts, labelNames []string) *CounterVec {
 			if len(lvs) != len(desc.variableLabels) {
 				panic(makeInconsistentCardinalityError(desc.fqName, desc.variableLabels, lvs))
 			}
-			result := &counter{desc: desc, labelPairs: makeLabelPairs(desc, lvs), now: time.Now, t: opts.T}
+			result := &counter{desc: desc, labelPairs: makeLabelPairs(desc, lvs), now: time.Now}
 			result.init(result) // Init self-collection.
 			return result
 		}),

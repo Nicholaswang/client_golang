@@ -19,6 +19,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/golang/protobuf/proto"
+
 	dto "github.com/prometheus/client_model/go"
 )
 
@@ -127,6 +129,9 @@ func (g *gauge) Sub(val float64) {
 }
 
 func (g *gauge) Write(out *dto.Metric) error {
+	if g.t.IsZero() == false {
+		out.TimestampMs = proto.Int64(g.t.Unix()*1000 + int64(g.t.Nanosecond()/1000000))
+	}
 	val := math.Float64frombits(atomic.LoadUint64(&g.valBits))
 	return populateMetric(GaugeValue, val, g.labelPairs, nil, out)
 }
